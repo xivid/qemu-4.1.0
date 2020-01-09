@@ -287,6 +287,9 @@ MigrationState *migrate_get_current(void);
 bool migrate_postcopy(void);
 
 bool migrate_release_ram(void);
+/* OSNET */
+bool migrate_bypass_shared_memory(void);
+/* OSNET-END */
 bool migrate_postcopy_ram(void);
 bool migrate_zero_blocks(void);
 bool migrate_dirty_bitmaps(void);

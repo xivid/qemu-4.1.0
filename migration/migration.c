@@ -2024,6 +2024,22 @@ bool migrate_release_ram(void)
     return s->enabled_capabilities[MIGRATION_CAPABILITY_RELEASE_RAM];
 }
 
+/* OSNET */
+bool migrate_bypass_shared_memory(void)
+{
+    MigrationState *s;
+
+    /* it is not workable with postcopy yet. */
+    if (migrate_postcopy_ram()) {
+        return false;
+    }
+
+    s = migrate_get_current();
+
+    return s->enabled_capabilities[MIGRATION_CAPABILITY_BYPASS_SHARED_MEMORY];
+}
+/* OSNET-END */
+
 bool migrate_postcopy_ram(void)
 {
     MigrationState *s;
