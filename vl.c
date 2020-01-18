@@ -130,6 +130,16 @@ int main(int argc, char **argv)
 #include "sysemu/iothread.h"
 #include "qemu/guest-random.h"
 
+#include "osnet/osnet.h"
+#if OSNET_MIGRATE_VM_TEMPLATING
+bool osnet_init_ram_state = false;
+enum osnet_dirty_bitmap_option osnet_bitmap_sync = OSNET_DEFAULT_DIRTY_BITMAP;
+#endif
+
+#if OSNET_DEBUG
+FILE *osnet_outfi = NULL;
+#endif
+
 #define MAX_VIRTIO_CONSOLES 1
 
 static const char *data_dir[16];
@@ -3228,6 +3238,16 @@ int main(int argc, char **argv, char **envp)
             case QEMU_OPTION_S:
                 autostart = 0;
                 break;
+#if OSNET_MIGRATE_VM_TEMPLATING
+            case QEMU_OPTION_osnet_init_ram_state:
+                osnet_init_ram_state = true;
+                break;
+#endif
+#if OSNET_DEBUG
+            case QEMU_OPTION_osnet_debug:
+                osnet_outfi = fopen(OSNET_DEBUG_FILE, OSNET_DEBUG_OUTPUT_MODE);
+                break;
+#endif
             case QEMU_OPTION_k:
                 keyboard_layout = optarg;
                 break;
@@ -4471,6 +4491,11 @@ int main(int argc, char **argv, char **envp)
     os_setup_post();
 
     main_loop();
+
+#if OSNET_DEBUG
+    if (osnet_outfi)
+        fclose(osnet_outfi);
+#endif
 
     gdbserver_cleanup();
 

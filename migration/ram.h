@@ -74,4 +74,11 @@ int ram_dirty_bitmap_reload(MigrationState *s, RAMBlock *rb);
 int colo_init_ram_cache(void);
 void colo_release_ram_cache(void);
 
+#include "osnet/osnet.h"
+#if OSNET_MIGRATE_VM_TEMPLATING
+void *osnet_get_ram_state(void);
+int osnet_ram_init_all(void *opaque);
+void osnet_migration_bitmap_sync_precopy(void *opaque);
+#endif
+
 #endif

@@ -58,6 +58,8 @@
 #include "savevm.h"
 #include "qemu/iov.h"
 
+#include "osnet/osnet.h"
+
 /***********************************************************/
 /* ram save/restore */
 
@@ -355,6 +357,15 @@ struct RAMState {
 typedef struct RAMState RAMState;
 
 static RAMState *ram_state;
+
+#if OSNET_MIGRATE_VM_TEMPLATING
+/* return  the address of ram_state, which itself is a pointer
+ * to RAMState */
+void *osnet_get_ram_state(void)
+{
+        return &ram_state;
+}
+#endif
 
 static NotifierWithReturnList precopy_notifier_list;
 
@@ -1686,16 +1697,13 @@ unsigned long migration_bitmap_find_dirty(RAMState *rs, RAMBlock *rb,
     unsigned long *bitmap = rb->bmap;
     unsigned long next;
 
-    /* OSNET */
-    /* bypass this ramblock */
+#if OSNET_CREATE_VM_TEMPLATE
     if (!bitmap || ramblock_is_ignored(rb)) {
+#else
+    if (ramblock_is_ignored(rb)) {
+#endif
         return size;
     }
-    /* OSNET-END */
-
-    //if (ramblock_is_ignored(rb)) {
-    //    return size;
-    //}
 
     /*
      * When the free page optimization is enabled, we need to check the bitmap
@@ -1758,10 +1766,47 @@ static inline bool migration_bitmap_clear_dirty(RAMState *rs,
 static void migration_bitmap_sync_range(RAMState *rs, RAMBlock *rb,
                                         ram_addr_t length)
 {
+#if OSNET_DEBUG
+    OSNET_PRINT(osnet_outfi, "%s\t%lu\n", __func__, rs->migration_dirty_pages);
+#endif
+#if OSNET_MIGRATE_VM_TEMPLATING
+    rs->migration_dirty_pages +=
+        cpu_physical_memory_sync_dirty_bitmap(rb, 0, length,
+                                              &rs->num_dirty_pages_period,
+                                              OSNET_DEFAULT_DIRTY_BITMAP);
+#else
     rs->migration_dirty_pages +=
         cpu_physical_memory_sync_dirty_bitmap(rb, 0, length,
                                               &rs->num_dirty_pages_period);
+#endif
 }
+
+#if OSNET_MIGRATE_VM_TEMPLATING
+static void osnet_migration_bitmap_clear(RAMState *rs, RAMBlock *rb,
+                                         ram_addr_t length)
+{
+    rs->migration_dirty_pages = 0;
+#if OSNET_DEBUG
+    OSNET_PRINT(osnet_outfi, "%s\t%lu\n", __func__, rs->migration_dirty_pages);
+#endif
+    rs->migration_dirty_pages +=
+        cpu_physical_memory_sync_dirty_bitmap(rb, 0, length,
+                                              &rs->num_dirty_pages_period,
+                                              OSNET_CLEAR_DIRTY_BITMAP);
+}
+
+static void osnet_migration_bitmap_init(RAMState *rs, RAMBlock *rb,
+                                        ram_addr_t length)
+{
+#if OSNET_DEBUG
+    OSNET_PRINT(osnet_outfi, "%s\t%lu\n", __func__, rs->migration_dirty_pages);
+#endif
+    rs->migration_dirty_pages +=
+        cpu_physical_memory_sync_dirty_bitmap(rb, 0, length,
+                                              &rs->num_dirty_pages_period,
+                                              OSNET_INIT_DIRTY_BITMAP);
+}
+#endif
 
 /**
  * ram_pagesize_summary: calculate all the pagesizes of a VM
@@ -1848,12 +1893,23 @@ static void migration_bitmap_sync(RAMState *rs)
     qemu_mutex_lock(&rs->bitmap_mutex);
     rcu_read_lock();
     RAMBLOCK_FOREACH_NOT_IGNORED(block) {
-        /* OSNET */
-        //migration_bitmap_sync_range(rs, block, block->used_length);
-        if (!migrate_bypass_shared_memory() || !qemu_ram_is_shared(block)) {
+#if OSNET_MIGRATE_VM_TEMPLATING
+        switch (osnet_bitmap_sync) {
+        case OSNET_CLEAR_DIRTY_BITMAP:
+            osnet_migration_bitmap_clear(rs, block, block->used_length);
+            break;
+        case OSNET_INIT_DIRTY_BITMAP:
+            osnet_migration_bitmap_init(rs, block, block->used_length);
+            break;
+        default:
+#if OSNET_CREATE_VM_TEMPLATE
+            if (!migrate_bypass_shared_memory())
+                migration_bitmap_sync_range(rs, block, block->used_length);
+#else
             migration_bitmap_sync_range(rs, block, block->used_length);
+#endif
         }
-        /* OSNET-END */
+#endif
     }
     ram_counters.remaining = ram_bytes_remaining();
     rcu_read_unlock();
@@ -3273,22 +3329,25 @@ static int ram_state_init(RAMState **rsp)
     QSIMPLEQ_INIT(&(*rsp)->src_page_requests);
 
     /*
-     * Count the total number of pages used by ram blocks not including any
-     * gaps due to alignment or unplugs.
-     * This must match with the initial values of dirty bitmap.
+     * Count the total number of pages used by ram blocks not
+     * including any gaps due to alignment or unplugs. This
+     * must match with the initial values of dirty bitmap.
      */
-    /* OSNET */
-    //(*rsp)->migration_dirty_pages = ram_bytes_total() >> TARGET_PAGE_BITS;
-    /* OSNET-END */
+#if OSNET_CREATE_VM_TEMPLATE
+    if (!migrate_bypass_shared_memory())
+        (*rsp)->migration_dirty_pages = ram_bytes_total() >> TARGET_PAGE_BITS;
+#else
+    (*rsp)->migration_dirty_pages = ram_bytes_total() >> TARGET_PAGE_BITS;
+#endif
+#if OSNET_DEBUG
+    OSNET_PRINT(osnet_outfi, "%s\t%lu\n", __func__, (*rsp)->migration_dirty_pages);
+#endif
     ram_state_reset(*rsp);
 
     return 0;
 }
 
-/* OSNET */
-//static void ram_list_init_bitmaps(void)
-static void ram_list_init_bitmaps(RAMState *rs)
-/* OSNET-END */
+static void ram_list_init_bitmaps(void)
 {
     MigrationState *ms = migrate_get_current();
     RAMBlock *block;
@@ -3309,12 +3368,10 @@ static void ram_list_init_bitmaps(RAMState *rs)
         }
 
         RAMBLOCK_FOREACH_NOT_IGNORED(block) {
-            /* OSNET */
-            if (migrate_bypass_shared_memory() && qemu_ram_is_shared(block)) {
+#if OSNET_CREATE_VM_TEMPLATE
+            if (migrate_bypass_shared_memory() && qemu_ram_is_shared(block))
                 continue;
-            }
-            /* OSNET-END */
-
+#endif
             pages = block->max_length >> TARGET_PAGE_BITS;
             /*
              * The initial dirty bitmap for migration must be set with all
@@ -3329,14 +3386,9 @@ static void ram_list_init_bitmaps(RAMState *rs)
             bitmap_set(block->bmap, 0, pages);
             block->clear_bmap_shift = shift;
             block->clear_bmap = bitmap_new(clear_bmap_size(pages, shift));
-
-            /* OSNET
-             * Count the total number of pages used by ram blocks not
-             * including any gaps due to alignments or unplugs.
-             */
-            rs->migration_dirty_pages += pages;
-            /* OSNET-END */
-
+#if OSNET_DEBUG
+            OSNET_PRINT(osnet_outfi, "%s\t%p\t%lu\n", __func__, block, block->used_length);
+#endif
             if (migrate_postcopy_ram()) {
                 block->unsentmap = bitmap_new(pages);
                 bitmap_set(block->unsentmap, 0, pages);
@@ -3352,10 +3404,7 @@ static void ram_init_bitmaps(RAMState *rs)
     qemu_mutex_lock_ramlist();
     rcu_read_lock();
 
-    /* OSNET */
-    //ram_list_init_bitmaps();
-    ram_list_init_bitmaps(rs);
-    /* OSNET-END */
+    ram_list_init_bitmaps();
     memory_global_dirty_log_start();
     migration_bitmap_sync_precopy(rs);
 
@@ -3379,6 +3428,61 @@ static int ram_init_all(RAMState **rsp)
 
     return 0;
 }
+
+#if OSNET_MIGRATE_VM_TEMPLATING
+void osnet_migration_bitmap_sync_precopy(void *opaque)
+{
+    RAMState **rsp = opaque;
+    RAMState *rs = *rsp;
+
+    qemu_mutex_lock_ramlist();
+    rcu_read_lock();
+    migration_bitmap_sync_precopy(rs);
+    rcu_read_unlock();
+    qemu_mutex_unlock_ramlist();
+}
+
+static void osnet_ram_init_bitmaps(RAMState *rs)
+{
+    /* For memory_global_dirty_log_start below.  */
+    //qemu_mutex_lock_iothread();
+    qemu_mutex_lock_ramlist();
+    rcu_read_lock();
+
+    ram_list_init_bitmaps();
+    memory_global_dirty_log_start();
+
+    osnet_bitmap_sync = OSNET_CLEAR_DIRTY_BITMAP;
+    migration_bitmap_sync_precopy(rs);
+
+    osnet_bitmap_sync = OSNET_INIT_DIRTY_BITMAP;
+    migration_bitmap_sync_precopy(rs);
+
+    osnet_bitmap_sync = OSNET_DEFAULT_DIRTY_BITMAP;
+
+    rcu_read_unlock();
+    qemu_mutex_unlock_ramlist();
+    //qemu_mutex_unlock_iothread();
+}
+
+int osnet_ram_init_all(void *opaque)
+{
+    RAMState **rsp = opaque;
+
+    if (ram_state_init(rsp)) {
+        return -1;
+    }
+
+    if (xbzrle_init()) {
+        ram_state_cleanup(rsp);
+        return -1;
+    }
+
+    osnet_ram_init_bitmaps(*rsp);
+
+    return 0;
+}
+#endif
 
 static void ram_state_resume_prepare(RAMState *rs, QEMUFile *out)
 {
@@ -3488,7 +3592,11 @@ static int ram_save_setup(QEMUFile *f, void *opaque)
 
     /* migration has already setup the bitmap, reuse it. */
     if (!migration_in_colo_state()) {
+#if OSNET_MIGRATE_VM_TEMPLATING
+        if (!osnet_init_ram_state && ram_init_all(rsp) != 0) {
+#else
         if (ram_init_all(rsp) != 0) {
+#endif
             compress_threads_save_cleanup();
             return -1;
         }
@@ -3681,8 +3789,13 @@ static void ram_save_pending(QEMUFile *f, void *opaque, uint64_t max_size,
 
     remaining_size = rs->migration_dirty_pages * TARGET_PAGE_SIZE;
 
+#if OSNET_MIGRATE_VM_TEMPLATING
+    if (!migration_in_postcopy() &&
+        remaining_size <= max_size) {
+#else
     if (!migration_in_postcopy() &&
         remaining_size < max_size) {
+#endif
         qemu_mutex_lock_iothread();
         rcu_read_lock();
         migration_bitmap_sync_precopy(rs);

@@ -49,6 +49,8 @@
 #include "monitor/monitor.h"
 #include "net/announce.h"
 
+#include "osnet/osnet.h"
+
 #define MAX_THROTTLE  (32 << 20)      /* Migration transfer speed throttling */
 
 /* Amount of time to allocate to each "chunk" of bandwidth-throttled
@@ -411,6 +413,12 @@ static void process_incoming_migration_bh(void *opaque)
 
     if (!global_state_received() ||
         global_state_get_runstate() == RUN_STATE_RUNNING) {
+#if OSNET_MIGRATE_VM_TEMPLATING
+        if (osnet_init_ram_state) {
+            void *opaque = osnet_get_ram_state();
+            osnet_ram_init_all(opaque);
+        }
+#endif
         if (autostart) {
             vm_start();
         } else {
@@ -2024,7 +2032,7 @@ bool migrate_release_ram(void)
     return s->enabled_capabilities[MIGRATION_CAPABILITY_RELEASE_RAM];
 }
 
-/* OSNET */
+#if OSNET_CREATE_VM_TEMPLATE
 bool migrate_bypass_shared_memory(void)
 {
     MigrationState *s;
@@ -2038,7 +2046,7 @@ bool migrate_bypass_shared_memory(void)
 
     return s->enabled_capabilities[MIGRATION_CAPABILITY_BYPASS_SHARED_MEMORY];
 }
-/* OSNET-END */
+#endif
 
 bool migrate_postcopy_ram(void)
 {
@@ -3106,7 +3114,9 @@ static MigIterateState migration_iteration_run(MigrationState *s)
 
     trace_migrate_pending(pending_size, s->threshold_size,
                           pend_pre, pend_compat, pend_post);
-
+#if OSNET_DEBUG
+    OSNET_PRINT(osnet_outfi, "%s\t%lu\t%ld\n", __func__, pending_size, s->threshold_size);
+#endif
     if (pending_size && pending_size >= s->threshold_size) {
         /* Still a significant amount to transfer */
         if (migrate_postcopy() && !in_postcopy &&

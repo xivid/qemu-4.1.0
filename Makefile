@@ -924,6 +924,7 @@ cscope:
 	rm -f "$(SRC_PATH)"/cscope.*
 	find "$(SRC_PATH)/" -name "*.[chsS]" -print | sed 's,^\./,,' > "$(SRC_PATH)/cscope.files"
 	cscope -b -i"$(SRC_PATH)/cscope.files"
+	ctags -R
 
 # opengl shader programs
 ui/shader/%-vert.h: $(SRC_PATH)/ui/shader/%.vert $(SRC_PATH)/scripts/shaderinclude.pl

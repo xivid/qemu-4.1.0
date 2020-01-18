@@ -24,6 +24,8 @@
 #include "sysemu/tcg.h"
 #include "exec/ramlist.h"
 
+#include "osnet/osnet.h"
+
 struct RAMBlock {
     struct rcu_head rcu;
     struct MemoryRegion *mr;
@@ -480,23 +482,35 @@ static inline void cpu_physical_memory_clear_dirty_range(ram_addr_t start,
     cpu_physical_memory_test_and_clear_dirty(start, length, DIRTY_MEMORY_CODE);
 }
 
-
 /* Called with RCU critical section */
+#if OSNET_MIGRATE_VM_TEMPLATING
+static inline
+uint64_t cpu_physical_memory_sync_dirty_bitmap(RAMBlock *rb,
+                                               ram_addr_t start,
+                                               ram_addr_t length,
+                                               uint64_t *real_dirty_pages,
+                                               enum osnet_dirty_bitmap_option op)
+#else
 static inline
 uint64_t cpu_physical_memory_sync_dirty_bitmap(RAMBlock *rb,
                                                ram_addr_t start,
                                                ram_addr_t length,
                                                uint64_t *real_dirty_pages)
+#endif
 {
     ram_addr_t addr;
     unsigned long word = BIT_WORD((start + rb->offset) >> TARGET_PAGE_BITS);
     uint64_t num_dirty = 0;
+#if OSNET_DEBUG
+    uint64_t num_dest = 0;
+#endif
     unsigned long *dest = rb->bmap;
 
     /* start address and length is aligned at the start of a word? */
     if (((word * BITS_PER_LONG) << TARGET_PAGE_BITS) ==
          (start + rb->offset) &&
         !(length & ((BITS_PER_LONG << TARGET_PAGE_BITS) - 1))) {
+
         int k;
         int nr = BITS_TO_LONGS(length >> TARGET_PAGE_BITS);
         unsigned long * const *src;
@@ -512,11 +526,34 @@ uint64_t cpu_physical_memory_sync_dirty_bitmap(RAMBlock *rb,
             if (src[idx][offset]) {
                 unsigned long bits = atomic_xchg(&src[idx][offset], 0);
                 unsigned long new_dirty;
+#if OSNET_MIGRATE_VM_TEMPLATING
+                switch (op) {
+                case OSNET_CLEAR_DIRTY_BITMAP:
+                    dest[k] = 0;
+                    break;
+                case OSNET_INIT_DIRTY_BITMAP:
+                    dest[k] = bits;
+                    *real_dirty_pages += ctpopl(bits);
+                    num_dirty += ctpopl(bits);
+                    break;
+                default:
+                    *real_dirty_pages += ctpopl(bits);
+                    new_dirty = ~dest[k];
+                    dest[k] |= bits;
+                    new_dirty &= bits;
+                    num_dirty += ctpopl(new_dirty);
+                }
+#else
                 *real_dirty_pages += ctpopl(bits);
                 new_dirty = ~dest[k];
                 dest[k] |= bits;
                 new_dirty &= bits;
                 num_dirty += ctpopl(new_dirty);
+
+#endif
+#if OSNET_DEBUG
+                num_dest += ctpopl(dest[k]);
+#endif
             }
 
             if (++offset >= BITS_TO_LONGS(DIRTY_MEMORY_BLOCK_SIZE)) {
@@ -537,6 +574,10 @@ uint64_t cpu_physical_memory_sync_dirty_bitmap(RAMBlock *rb,
             /* Slow path - still do that in a huge chunk */
             memory_region_clear_dirty_bitmap(rb->mr, start, length);
         }
+#if OSNET_DEBUG
+        OSNET_PRINT(osnet_outfi, "%s\t%s\t%p\t%lu\t%lu\t%lu\n",
+                    __func__, "kvm_bmap", rb, num_dirty, num_dest, *real_dirty_pages);
+#endif
     } else {
         ram_addr_t offset = rb->offset;
 
@@ -549,12 +590,20 @@ uint64_t cpu_physical_memory_sync_dirty_bitmap(RAMBlock *rb,
                 long k = (start + addr) >> TARGET_PAGE_BITS;
                 if (!test_and_set_bit(k, dest)) {
                     num_dirty++;
+                } else {
+#if OSNET_DEBUG
+                    num_dest++;
+#endif
                 }
             }
         }
+#if OSNET_DEBUG
+        OSNET_PRINT(osnet_outfi, "%s\t%s\t%p\t%lu\t%lu\t%lu\n",
+                    __func__, "test_and_set", rb, num_dirty, num_dest, *real_dirty_pages);
+#endif
     }
 
-    return num_dirty;
+   return num_dirty;
 }
 #endif
 #endif

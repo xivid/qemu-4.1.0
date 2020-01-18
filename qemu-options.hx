@@ -3545,6 +3545,24 @@ STEXI
 Do not start CPU at startup (you must type 'c' in the monitor).
 ETEXI
 
+DEF("osnet_init_ram_state", 0, QEMU_OPTION_osnet_init_ram_state, \
+    "-osnet_init_ram_state     initialize the RAM state after creating a VM with the VM templating\n",
+    QEMU_ARCH_ALL)
+STEXI
+@item -osnet_init_ram_state
+@findex -osnet_init_ram_state
+Initialize the RAM state after creating a VM with the VM templating
+ETEXI
+
+DEF("osnet_debug", 0, QEMU_OPTION_osnet_debug, \
+    "-osnet_debug     save the debug output to /tmp/debug.txt\n",
+    QEMU_ARCH_ALL)
+STEXI
+@item -osnet_debug
+@findex -osnet_debug
+Save the debug output to /tmp/debug.txt
+ETEXI
+
 DEF("realtime", HAS_ARG, QEMU_OPTION_realtime,
     "-realtime [mlock=on|off]\n"
     "                run qemu with realtime features\n"
