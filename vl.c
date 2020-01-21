@@ -140,6 +140,43 @@ enum osnet_dirty_bitmap_option osnet_bitmap_sync = OSNET_DEFAULT_DIRTY_BITMAP;
 FILE *osnet_outfi = NULL;
 #endif
 
+#if OSNET_UDP
+bool osnet_send_udp(const char *msg)
+{
+    int fd;
+    struct addrinfo hints;
+    struct addrinfo *serv;
+    struct addrinfo *pos;
+    char buf[100];
+
+    memset(buf, 0, sizeof(buf));
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    getaddrinfo(OSNET_HOST_IP, OSNET_HOST_PORT, &hints, &serv);
+
+    for (pos = serv; pos != NULL; pos = pos->ai_next) {
+        fd = socket(pos->ai_family, pos->ai_socktype, pos->ai_protocol);
+        if (fd == -1)
+            continue;
+        else
+            break;
+    }
+    freeaddrinfo(serv);
+
+    bind(fd, pos->ai_addr, pos->ai_addrlen);
+
+    sprintf(buf, "%s-%u", msg, getpid());
+    sendto(fd, buf, strlen(buf), 0, pos->ai_addr, pos->ai_addrlen);
+
+    close(fd);
+
+    return true;
+}
+#endif
+
 #define MAX_VIRTIO_CONSOLES 1
 
 static const char *data_dir[16];

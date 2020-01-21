@@ -1722,6 +1722,9 @@ void migrate_init(MigrationState *s)
 
     migrate_set_state(&s->state, MIGRATION_STATUS_NONE, MIGRATION_STATUS_SETUP);
 
+#if OSNET_UDP
+    osnet_send_udp("start");
+#endif
     s->start_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     s->total_time = 0;
     s->vm_was_running = false;
@@ -2775,6 +2778,9 @@ static void migration_completion(MigrationState *s)
 
     if (s->state == MIGRATION_STATUS_ACTIVE) {
         qemu_mutex_lock_iothread();
+#if OSNET_UDP
+        osnet_send_udp("downtime_start");
+#endif
         s->downtime_start = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
         qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER, NULL);
         s->vm_was_running = runstate_is_running();
@@ -3030,6 +3036,9 @@ static uint64_t migration_total_bytes(MigrationState *s)
 
 static void migration_calculate_complete(MigrationState *s)
 {
+#if OSNET_UDP
+    osnet_send_udp("end");
+#endif
     uint64_t bytes = migration_total_bytes(s);
     int64_t end_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     int64_t transfer_time;
