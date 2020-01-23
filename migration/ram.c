@@ -404,6 +404,10 @@ void precopy_enable_free_page_optimization(void)
 
 uint64_t ram_bytes_remaining(void)
 {
+#if OSNET_MIGRATE_VM_TEMPLATING
+    if ((signed long)ram_state->migration_dirty_pages < 0)
+        ram_state->migration_dirty_pages = 0;
+#endif
     return ram_state ? (ram_state->migration_dirty_pages * TARGET_PAGE_SIZE) :
                        0;
 }
