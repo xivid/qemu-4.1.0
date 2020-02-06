@@ -9,7 +9,7 @@
 #define OSNET_CREATE_VM_TEMPLATE        1
 #define OSNET_MIGRATE_VM_TEMPLATING     1
 #define OSNET_DEBUG                     1
-#define OSNET_UDP                       1
+#define OSNET_UDP                       0
 
 #define OSNET_PRINT(out, ...) \
     if (out) { \
