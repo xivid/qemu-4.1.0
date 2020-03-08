@@ -3371,6 +3371,12 @@ static void ram_list_init_bitmaps(void)
             shift = CLEAR_BITMAP_SHIFT_MIN;
         }
 
+#if OSNET_DEBUG
+        INTERNAL_RAMBLOCK_FOREACH(block) {
+            OSNET_PRINT(osnet_outfi, "ramblock_list\t%s\t%p\t%lu\n", __func__, block, block->used_length);
+        }
+#endif
+
         RAMBLOCK_FOREACH_NOT_IGNORED(block) {
 #if OSNET_CREATE_VM_TEMPLATE
             if (migrate_bypass_shared_memory() && qemu_ram_is_shared(block))
@@ -3612,6 +3618,9 @@ static int ram_save_setup(QEMUFile *f, void *opaque)
     qemu_put_be64(f, ram_bytes_total_common(true) | RAM_SAVE_FLAG_MEM_SIZE);
 
     RAMBLOCK_FOREACH_MIGRATABLE(block) {
+#if OSNET_DEBUG
+        OSNET_PRINT(osnet_outfi, "migratable\t%s\t%p\t%lu\n", __func__, block, block->used_length);
+#endif
         qemu_put_byte(f, strlen(block->idstr));
         qemu_put_buffer(f, (uint8_t *)block->idstr, strlen(block->idstr));
         qemu_put_be64(f, block->used_length);

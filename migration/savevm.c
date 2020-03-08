@@ -1080,6 +1080,9 @@ void qemu_savevm_state_header(QEMUFile *f)
     qemu_put_be32(f, QEMU_VM_FILE_VERSION);
 
     if (migrate_get_current()->send_configuration) {
+#if OSNET_DEBUG
+        OSNET_PRINT(osnet_outfi, "%s\tQEMU_VM_CONFIGURATION\n", __func__);
+#endif
         qemu_put_byte(f, QEMU_VM_CONFIGURATION);
         vmstate_save_state(f, &vmstate_configuration, &savevm_state, 0);
     }
@@ -1102,7 +1105,9 @@ void qemu_savevm_state_setup(QEMUFile *f)
             }
         }
         save_section_header(f, se, QEMU_VM_SECTION_START);
-
+#if OSNET_DEBUG
+        OSNET_PRINT(osnet_outfi, "%s\tQEMU_VM_SECTION_START\t%s\n", __func__, se->idstr);
+#endif
         ret = se->ops->save_setup(f, se->opaque);
         save_section_footer(f, se);
         if (ret < 0) {
@@ -1181,7 +1186,9 @@ int qemu_savevm_state_iterate(QEMUFile *f, bool postcopy)
         trace_savevm_section_start(se->idstr, se->section_id);
 
         save_section_header(f, se, QEMU_VM_SECTION_PART);
-
+#if OSNET_DEBUG
+        OSNET_PRINT(osnet_outfi, "%s\tQEMU_VM_SECTION_PART\t%s\n", __func__, se->idstr);
+#endif
         ret = se->ops->save_live_iterate(f, se->opaque);
         trace_savevm_section_end(se->idstr, se->section_id, ret);
         save_section_footer(f, se);
@@ -1281,7 +1288,9 @@ int qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only,
         trace_savevm_section_start(se->idstr, se->section_id);
 
         save_section_header(f, se, QEMU_VM_SECTION_END);
-
+#if OSNET_DEBUG
+        OSNET_PRINT(osnet_outfi, "%s\tQEMU_VM_SECTION_END\t%s\n", __func__, se->idstr);
+#endif
         ret = se->ops->save_live_complete_precopy(f, se->opaque);
         trace_savevm_section_end(se->idstr, se->section_id, ret);
         save_section_footer(f, se);
@@ -1315,6 +1324,9 @@ int qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only,
         json_prop_int(vmdesc, "instance_id", se->instance_id);
 
         save_section_header(f, se, QEMU_VM_SECTION_FULL);
+#if OSNET_DEBUG
+        OSNET_PRINT(osnet_outfi, "%s\tQEMU_VM_SECTION_FULL\t%s\n", __func__, se->idstr);
+#endif
         ret = vmstate_save(f, se, vmdesc);
         if (ret) {
             qemu_file_set_error(f, ret);

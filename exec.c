@@ -2247,6 +2247,9 @@ static void dirty_memory_extend(ram_addr_t old_ram_size,
 
 static void ram_block_add(RAMBlock *new_block, Error **errp, bool shared)
 {
+#if OSNET_DEBUG
+    OSNET_PRINT(osnet_outfi, "%s\t%p\t%lu\n", __func__, new_block, new_block->used_length);
+#endif
     RAMBlock *block;
     RAMBlock *last_block = NULL;
     ram_addr_t old_ram_size, new_ram_size;
