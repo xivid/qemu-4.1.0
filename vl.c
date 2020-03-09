@@ -132,8 +132,16 @@ int main(int argc, char **argv)
 
 #include "osnet/osnet.h"
 #if OSNET_MIGRATE_VM_TEMPLATING
+struct OSNETRAMBlocks osnet_rbs;
 bool osnet_init_ram_state = false;
 enum osnet_dirty_bitmap_option osnet_bitmap_sync = OSNET_DEFAULT_DIRTY_BITMAP;
+
+void osnet_init_orbs(struct OSNETRAMBlocks *orbs)
+{
+    for (size_t i = 0; i < OSNET_MAX_LEN; i++)
+        orbs->rbs[i] = NULL;
+    orbs->len = 0;
+}
 #endif
 
 #if OSNET_DEBUG
@@ -3278,6 +3286,7 @@ int main(int argc, char **argv, char **envp)
 #if OSNET_MIGRATE_VM_TEMPLATING
             case QEMU_OPTION_osnet_init_ram_state:
                 osnet_init_ram_state = true;
+                osnet_init_orbs(&osnet_rbs);
                 break;
 #endif
 #if OSNET_DEBUG

@@ -79,6 +79,7 @@ void colo_release_ram_cache(void);
 void *osnet_get_ram_state(void);
 int osnet_ram_init_all(void *opaque);
 void osnet_migration_bitmap_sync_precopy(void *opaque);
+void osnet_ram_init_hotplug_dev(void);
 #endif
 
 #endif

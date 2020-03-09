@@ -1771,7 +1771,7 @@ static void migration_bitmap_sync_range(RAMState *rs, RAMBlock *rb,
                                         ram_addr_t length)
 {
 #if OSNET_DEBUG
-    OSNET_PRINT(osnet_outfi, "%s\t%lu\n", __func__, rs->migration_dirty_pages);
+    OSNET_PRINT(osnet_outfi, "%s\t%p\t%lu\n", __func__, rb, rs->migration_dirty_pages);
 #endif
 #if OSNET_MIGRATE_VM_TEMPLATING
     rs->migration_dirty_pages +=
@@ -1791,7 +1791,7 @@ static void osnet_migration_bitmap_clear(RAMState *rs, RAMBlock *rb,
 {
     rs->migration_dirty_pages = 0;
 #if OSNET_DEBUG
-    OSNET_PRINT(osnet_outfi, "%s\t%lu\n", __func__, rs->migration_dirty_pages);
+    OSNET_PRINT(osnet_outfi, "%s\t%p\t%lu\n", __func__, rb, rs->migration_dirty_pages);
 #endif
     rs->migration_dirty_pages +=
         cpu_physical_memory_sync_dirty_bitmap(rb, 0, length,
@@ -1803,7 +1803,7 @@ static void osnet_migration_bitmap_init(RAMState *rs, RAMBlock *rb,
                                         ram_addr_t length)
 {
 #if OSNET_DEBUG
-    OSNET_PRINT(osnet_outfi, "%s\t%lu\n", __func__, rs->migration_dirty_pages);
+    OSNET_PRINT(osnet_outfi, "%s\t%p\t%lu\n", __func__, rb, rs->migration_dirty_pages);
 #endif
     rs->migration_dirty_pages +=
         cpu_physical_memory_sync_dirty_bitmap(rb, 0, length,
@@ -3370,13 +3370,11 @@ static void ram_list_init_bitmaps(void)
                          "min value (%u)", shift, CLEAR_BITMAP_SHIFT_MIN);
             shift = CLEAR_BITMAP_SHIFT_MIN;
         }
-
 #if OSNET_DEBUG
         INTERNAL_RAMBLOCK_FOREACH(block) {
             OSNET_PRINT(osnet_outfi, "ramblock_list\t%s\t%p\t%lu\n", __func__, block, block->used_length);
         }
 #endif
-
         RAMBLOCK_FOREACH_NOT_IGNORED(block) {
 #if OSNET_CREATE_VM_TEMPLATE
             if (migrate_bypass_shared_memory() && qemu_ram_is_shared(block))
@@ -3440,6 +3438,42 @@ static int ram_init_all(RAMState **rsp)
 }
 
 #if OSNET_MIGRATE_VM_TEMPLATING
+void osnet_ram_init_hotplug_dev(void)
+{
+    MigrationState *ms = migrate_get_current();
+    RAMBlock *block;
+    unsigned long pages;
+    uint8_t shift;
+
+    //qemu_mutex_lock_iothread();
+    qemu_mutex_lock_ramlist();
+    rcu_read_lock();
+
+    shift = ms->clear_bitmap_shift;
+
+    INTERNAL_RAMBLOCK_FOREACH(block) {
+        bool new = true;
+        for (size_t i = 0; i < osnet_rbs.len; i++) {
+            if (osnet_rbs.rbs[i] == block) {
+                new = false;
+                break;
+            }
+        }
+
+        if (new) {
+            pages = block->max_length >> TARGET_PAGE_BITS;
+            block->bmap = bitmap_new(pages);
+            bitmap_set(block->bmap, 0, pages);
+            block->clear_bmap_shift = shift;
+            block->clear_bmap = bitmap_new(clear_bmap_size(pages, shift));
+        }
+    }
+
+    rcu_read_unlock();
+    qemu_mutex_unlock_ramlist();
+    //qemu_mutex_unlock_iothread();
+}
+
 void osnet_migration_bitmap_sync_precopy(void *opaque)
 {
     RAMState **rsp = opaque;
@@ -3452,12 +3486,24 @@ void osnet_migration_bitmap_sync_precopy(void *opaque)
     qemu_mutex_unlock_ramlist();
 }
 
+static void osnet_get_ramblocks(void)
+{
+    RAMBlock *block;
+    INTERNAL_RAMBLOCK_FOREACH(block) {
+        int len = osnet_rbs.len;
+        osnet_rbs.rbs[len] = block;
+        osnet_rbs.len++;
+    }
+}
+
 static void osnet_ram_init_bitmaps(RAMState *rs)
 {
     /* For memory_global_dirty_log_start below.  */
     //qemu_mutex_lock_iothread();
     qemu_mutex_lock_ramlist();
     rcu_read_lock();
+
+    osnet_get_ramblocks();
 
     ram_list_init_bitmaps();
     memory_global_dirty_log_start();
@@ -3604,12 +3650,18 @@ static int ram_save_setup(QEMUFile *f, void *opaque)
     if (!migration_in_colo_state()) {
 #if OSNET_MIGRATE_VM_TEMPLATING
         if (!osnet_init_ram_state && ram_init_all(rsp) != 0) {
+            compress_threads_save_cleanup();
+            return -1;
+        } else {
+            /* mark the bmap of hot-plugged devices */
+            osnet_ram_init_hotplug_dev();
+        }
 #else
         if (ram_init_all(rsp) != 0) {
-#endif
             compress_threads_save_cleanup();
             return -1;
         }
+#endif
     }
     (*rsp)->f = f;
 

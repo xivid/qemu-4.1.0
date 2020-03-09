@@ -18,11 +18,18 @@
     }
 
 #if OSNET_MIGRATE_VM_TEMPLATING
+#define OSNET_MAX_LEN 512
+struct OSNETRAMBlocks {
+    RAMBlock *rbs[OSNET_MAX_LEN];
+    int len;
+};
 extern bool osnet_init_ram_state;
+extern struct OSNETRAMBlocks osnet_rbs;
 enum osnet_dirty_bitmap_option {OSNET_CLEAR_DIRTY_BITMAP,
                                 OSNET_INIT_DIRTY_BITMAP,
                                 OSNET_DEFAULT_DIRTY_BITMAP};
 extern enum osnet_dirty_bitmap_option osnet_bitmap_sync;
+void osnet_init_orbs(struct OSNETRAMBlocks *orbs);
 #endif
 
 #if OSNET_DEBUG

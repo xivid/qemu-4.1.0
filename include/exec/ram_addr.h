@@ -549,7 +549,6 @@ uint64_t cpu_physical_memory_sync_dirty_bitmap(RAMBlock *rb,
                 dest[k] |= bits;
                 new_dirty &= bits;
                 num_dirty += ctpopl(new_dirty);
-
 #endif
 #if OSNET_DEBUG
                 num_dest += ctpopl(dest[k]);
