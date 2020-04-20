@@ -24,7 +24,7 @@
 #include "sysemu/tcg.h"
 #include "exec/ramlist.h"
 
-#include "osnet/osnet.h"
+#include "osnet/vm_template.h"
 
 struct RAMBlock {
     struct rcu_head rcu;
@@ -602,7 +602,7 @@ uint64_t cpu_physical_memory_sync_dirty_bitmap(RAMBlock *rb,
 #endif
     }
 
-   return num_dirty;
+    return num_dirty;
 }
 #endif
 #endif

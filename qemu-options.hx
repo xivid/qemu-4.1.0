@@ -137,6 +137,15 @@ no incompatible TCG features have been enabled (e.g. icount/replay).
 @end table
 ETEXI
 
+DEF("osnet_cpumap", HAS_ARG, QEMU_OPTION_osnet_cpumap,
+    "-osnet_cpumap path=/to/cpumap\n"
+    "                path = the file specifies the VCPU-to-PCPU assignment.\n",  QEMU_ARCH_ALL)
+STEXI
+@item -osnet_cpumap path=/to/cpumap
+@findex -osnet_cpumap
+Admin specifies the VCPU to PCPU assignment for the bare-metal VM.
+ETEXI
+
 DEF("smp", HAS_ARG, QEMU_OPTION_smp,
     "-smp [cpus=]n[,maxcpus=cpus][,cores=cores][,threads=threads][,dies=dies][,sockets=sockets]\n"
     "                set the number of CPUs to 'n' [default=1]\n"

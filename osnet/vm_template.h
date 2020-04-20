@@ -1,8 +1,5 @@
-/*
- * OSNET control flags.
- */
-#ifndef _OSNET_H
-#define _OSNET_H
+#ifndef _OSNET_VM_TEMPLATING_H
+#define _OSNET_VM_TEMPLATING_H
 #include <stdbool.h>
 #include <stdio.h>
 

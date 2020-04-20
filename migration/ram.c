@@ -58,7 +58,7 @@
 #include "savevm.h"
 #include "qemu/iov.h"
 
-#include "osnet/osnet.h"
+#include "osnet/vm_template.h"
 
 /***********************************************************/
 /* ram save/restore */

@@ -49,7 +49,7 @@
 #include "monitor/monitor.h"
 #include "net/announce.h"
 
-#include "osnet/osnet.h"
+#include "osnet/vm_template.h"
 
 #define MAX_THROTTLE  (32 << 20)      /* Migration transfer speed throttling */
 

@@ -130,7 +130,8 @@ int main(int argc, char **argv)
 #include "sysemu/iothread.h"
 #include "qemu/guest-random.h"
 
-#include "osnet/osnet.h"
+#include "osnet/mvm.h"
+#include "osnet/vm_template.h"
 #if OSNET_MIGRATE_VM_TEMPLATING
 struct OSNETRAMBlocks osnet_rbs;
 bool osnet_init_ram_state = false;
@@ -3040,6 +3041,9 @@ int main(int argc, char **argv, char **envp)
     }
 
     /* second pass of option parsing */
+#if OSNET_MVM
+        bool is_osnet_cpumap = false;
+#endif
     optind = 1;
     for(;;) {
         if (optind >= argc)
@@ -3632,6 +3636,12 @@ int main(int argc, char **argv, char **envp)
                     exit(1);
                 }
                 break;
+#if OSNET_MVM
+            case QEMU_OPTION_osnet_cpumap:
+                osnet_initialize_cpumap(optarg, &osnet_cpumap);
+                is_osnet_cpumap = true;
+                break;
+#endif
             case QEMU_OPTION_vnc:
                 vnc_parse(optarg, &error_fatal);
                 break;
@@ -4234,6 +4244,15 @@ int main(int argc, char **argv, char **envp)
      * after machine_set_property().
      */
     configure_accelerator(current_machine, argv[0]);
+#if OSNET_MVM
+    if(is_osnet_cpumap &&
+       osnet_check_cpumap_validity(current_machine, &osnet_cpumap))
+            osnet_kvm_set_cpumap(current_machine, &osnet_cpumap);
+    
+    pthread_t tid;
+    if (pthread_create(&tid, NULL, osnet_run_cpumap_server, current_machine))
+        perror("pthread_create");
+#endif
 
     /*
      * Beware, QOM objects created before this point miss global and
@@ -4543,6 +4562,15 @@ int main(int argc, char **argv, char **envp)
         fclose(osnet_outfi);
 #endif
 
+#if OSNET_MVM
+    osnet_terminate_cpumap_server();
+
+    if (pthread_join(tid, NULL))
+        perror("pthread_join");
+    else
+        printf("server pthread is terminated\n");
+#endif
+
     gdbserver_cleanup();
 
     /*
@@ -4581,3 +4609,234 @@ int main(int argc, char **argv, char **envp)
 
     return 0;
 }
+
+#if OSNET_MVM
+void osnet_initialize_cpumap(const char *optarg, struct osnet_cpumap *cpumap)
+{
+        osnet_default_initialize(cpumap);
+        osnet_get_path(optarg, cpumap);
+        osnet_get_cpumap(cpumap);
+        osnet_print_cpumap(cpumap);
+}
+
+void osnet_default_initialize(struct osnet_cpumap *cpumap)
+{
+        memset(cpumap->path, OSNET_NULL_CHAR, OSNET_STR_LEN);
+        for (int i = 0; i < OSNET_MAX_VCPU_ID; i++) {
+                cpumap->pcpus[i] = OSNET_FALSE_VALUE;
+        }
+        cpumap->is_valid = false;
+        cpumap->nvcpus = 0;
+}
+
+void osnet_get_path(const char *optarg, struct osnet_cpumap *cpumap)
+{
+        char *token;
+        char *input;
+
+        input = strdup(optarg);
+
+        token = strtok(input, "=");
+        token = strtok(NULL, "=");
+        if (token != NULL)
+                strcpy(cpumap->path, token);
+
+        free(input);
+}
+
+void osnet_get_cpumap(struct osnet_cpumap *cpumap)
+{
+        int ret;
+        FILE *infile;
+        int vcpu;
+        int pcpu;
+
+        ret = access(cpumap->path, F_OK);
+        if (ret == -1) {
+                perror("access");
+                return;
+        }
+
+        infile = fopen(cpumap->path, "r");
+        if (!infile) {
+                perror("fopen");
+                return;
+        }
+
+        ret = fscanf(infile, "%d %d", &vcpu, &pcpu);
+        while (ret != EOF) {
+                cpumap->nvcpus++;
+                cpumap->pcpus[vcpu] = pcpu;
+                ret = fscanf(infile, "%d %d", &vcpu, &pcpu);
+        }
+
+        fclose(infile);
+}
+
+void osnet_print_cpumap(const struct osnet_cpumap *cpumap)
+{
+        printf("\n%s\n", cpumap->path);
+
+        for (int i = 0; i < OSNET_MAX_VCPU_ID; i++) {
+                if (cpumap->pcpus[i] != OSNET_FALSE_VALUE)
+                        printf("vcpu-pcpu: %d\t%d\n", i, cpumap->pcpus[i]);
+        }
+
+        printf("valid: %d\n", cpumap->is_valid);
+
+        printf("entry: %d\n", cpumap->nvcpus);
+}
+
+/* We only allow the full set of VCPU-PCPU assignments. We do
+ * not support hotpluggable CPUs. */
+bool osnet_check_cpumap_validity(const MachineState *ms,
+                                 struct osnet_cpumap *cpumap)
+{
+        if (ms->smp.cpus == cpumap->nvcpus) {
+                cpumap->is_valid = true;
+                return true;
+        }
+
+        return false;
+}
+
+void osnet_kvm_set_cpumap(const MachineState *ms,
+                          const struct osnet_cpumap *cpumap)
+{
+        int ret;
+        KVMState *vm;
+
+        vm = KVM_STATE(ms->accelerator);
+        ret = ioctl(vm->vmfd, OSNET_KVM_SET_CPUMAP, cpumap);
+        if (ret < 0)
+                perror("ioctl");
+}
+
+void *osnet_run_cpumap_server(void *arg)
+{
+        int ret;
+        int len;
+        int server_sock;
+        struct sockaddr_un local;
+        char sock_path[OSNET_STR_LEN] = "";
+
+        server_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (server_sock < 0) {
+                perror("socket");
+                return NULL;
+        }
+
+        local.sun_family = AF_UNIX;
+        snprintf(sock_path, OSNET_STR_LEN, "%s/un-%d.sock", SOCK_DIR, getpid());
+        strcpy(local.sun_path, sock_path);
+        unlink(local.sun_path);
+        len = strlen(local.sun_path) + sizeof(local.sun_family);
+        ret = bind(server_sock, (struct sockaddr *)&local, len);
+        if (ret < 0)  {
+                perror("bind");
+                goto out;
+        }
+
+        ret = listen(server_sock, 3);
+        if (ret < 0) {
+                perror("listen");
+                goto out;
+        }
+
+        while (true) {
+                int n;
+                int client_sock;
+                char msg[OSNET_STR_LEN];
+                socklen_t vr;
+                struct sockaddr_un remote;
+                MachineState *ms;
+                KVMState *vm;
+
+                memset(msg, OSNET_NULL_CHAR, sizeof(msg));
+
+                printf("%s is waiting for a connection\n", local.sun_path);
+                vr = sizeof(remote);
+                client_sock = accept(server_sock, (struct sockaddr *)&remote,
+                                     &vr);
+                if (client_sock == -1) {
+                        perror("accept");
+                        goto out;
+                }
+                printf("%s is connected\n", local.sun_path);
+
+                n = recv(client_sock, msg, OSNET_STR_LEN, 0);
+                if (n < 0) {
+                        perror("recv");
+                        close(client_sock);
+                        goto out;
+                }
+
+                for (int i = 0; i < strlen(msg); i++)
+                        msg[i] = tolower(msg[i]);
+
+                if (strncmp(msg, TERMINATION, sizeof(TERMINATION)) == 0) {
+                        close(client_sock);
+                        unlink(local.sun_path);
+                        goto out;
+                } else {
+                        osnet_default_initialize(&osnet_cpumap);
+                        strcpy(osnet_cpumap.path, msg);
+                        osnet_get_cpumap(&osnet_cpumap);
+                        osnet_print_cpumap(&osnet_cpumap);
+
+                        ms = (MachineState *)arg;
+                        if(osnet_check_cpumap_validity(ms, &osnet_cpumap)) {
+                                vm = KVM_STATE(ms->accelerator);
+                                ret = ioctl(vm->vmfd, OSNET_KVM_SET_CPUMAP,
+                                            &osnet_cpumap);
+                                if (ret < 0)
+                                        perror("ioctl");
+                        } else {
+                                printf("invalid cpumap\n");
+                        }
+                }
+
+                close(client_sock);
+        }
+
+out:
+        close(server_sock);
+        return NULL;
+}
+
+void osnet_terminate_cpumap_server(void)
+{
+        int ret;
+        int len;
+        int server_sock;
+        struct sockaddr_un remote;
+        char sock_path[OSNET_STR_LEN] = "";
+
+        server_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (server_sock < 0) {
+                perror("socket");
+                return;
+        }
+        
+        printf("trying to connect the server\n");
+        remote.sun_family = AF_UNIX;
+        snprintf(sock_path, OSNET_STR_LEN, "%s/un-%d.sock", SOCK_DIR, getpid());
+        strcpy(remote.sun_path, sock_path);
+        len = strlen(remote.sun_path) + sizeof(remote.sun_family);
+        ret = connect(server_sock, (struct sockaddr *)&remote, len);
+        if (ret < 0) {
+                perror("connect");
+                goto out;
+        }
+        printf("connected\n");
+
+        ret = send(server_sock, TERMINATION, strlen(TERMINATION), 0);
+        if (ret < 0) {
+                perror("send");
+                goto out;
+        }
+
+out:
+        close(server_sock);
+}
+#endif
