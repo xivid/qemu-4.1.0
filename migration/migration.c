@@ -435,6 +435,11 @@ static void process_incoming_migration_bh(void *opaque)
      * observer sees this event they might start to prod at the VM assuming
      * it's ready to use.
      */
+#if OSNET_UDP
+    osnet_send_udp("end",fd_udp,pos_udp);
+    close(fd_udp);
+#endif
+
     migrate_set_state(&mis->state, MIGRATION_STATUS_ACTIVE,
                       MIGRATION_STATUS_COMPLETED);
     qemu_bh_delete(mis->bh);
@@ -1723,7 +1728,7 @@ void migrate_init(MigrationState *s)
     migrate_set_state(&s->state, MIGRATION_STATUS_NONE, MIGRATION_STATUS_SETUP);
 
 #if OSNET_UDP
-    osnet_send_udp("start");
+        osnet_send_udp("start",fd_udp,pos_udp);
 #endif
     s->start_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     s->total_time = 0;
@@ -2779,7 +2784,9 @@ static void migration_completion(MigrationState *s)
     if (s->state == MIGRATION_STATUS_ACTIVE) {
         qemu_mutex_lock_iothread();
 #if OSNET_UDP
-        osnet_send_udp("downtime_start");
+                osnet_send_udp("downtime_start",fd_udp,pos_udp);
+                close(fd_udp);
+
 #endif
         s->downtime_start = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
         qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER, NULL);

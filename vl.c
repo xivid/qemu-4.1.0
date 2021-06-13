@@ -150,38 +150,19 @@ FILE *osnet_outfi = NULL;
 #endif
 
 #if OSNET_UDP
-bool osnet_send_udp(const char *msg)
+int fd_udp;
+struct addrinfo hints_udp;
+struct addrinfo *serv_udp;
+struct addrinfo *pos_udp;
+
+bool osnet_send_udp(const char *msg,int fd,struct addrinfo *pos)
 {
-    int fd;
-    struct addrinfo hints;
-    struct addrinfo *serv;
-    struct addrinfo *pos;
+   
     char buf[100];
 
     memset(buf, 0, sizeof(buf));
-
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_DGRAM;
-
-    getaddrinfo(OSNET_HOST_IP, OSNET_HOST_PORT, &hints, &serv);
-
-    for (pos = serv; pos != NULL; pos = pos->ai_next) {
-        fd = socket(pos->ai_family, pos->ai_socktype, pos->ai_protocol);
-        if (fd == -1)
-            continue;
-        else
-            break;
-    }
-    freeaddrinfo(serv);
-
-    bind(fd, pos->ai_addr, pos->ai_addrlen);
-
     sprintf(buf, "%s-%u", msg, getpid());
     sendto(fd, buf, strlen(buf), 0, pos->ai_addr, pos->ai_addrlen);
-
-    close(fd);
-
     return true;
 }
 #endif
@@ -4755,6 +4736,22 @@ void *osnet_run_cpumap_server(void *arg)
                 memset(msg, OSNET_NULL_CHAR, sizeof(msg));
 
                 printf("%s is waiting for a connection\n", local.sun_path);
+#if OSNET_UDP
+                memset(&hints_udp, 0, sizeof(hints_udp));
+                hints_udp.ai_family = AF_UNSPEC;
+                hints_udp.ai_socktype = SOCK_DGRAM;
+                getaddrinfo(OSNET_HOST_IP, OSNET_HOST_PORT, &hints_udp, &serv_udp);
+                for (pos_udp = serv_udp; pos_udp != NULL; pos_udp = pos_udp->ai_next) {
+
+                        fd_udp = socket(pos_udp->ai_family, pos_udp->ai_socktype, pos_udp->ai_protocol);
+                        if (fd_udp == -1)
+                                continue;
+                        else
+                                break;
+                }
+                bind(fd_udp, pos_udp->ai_addr, pos_udp->ai_addrlen);
+
+#endif
                 vr = sizeof(remote);
                 client_sock = accept(server_sock, (struct sockaddr *)&remote,
                                      &vr);

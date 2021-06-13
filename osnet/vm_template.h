@@ -5,8 +5,8 @@
 
 #define OSNET_CREATE_VM_TEMPLATE        1
 #define OSNET_MIGRATE_VM_TEMPLATING     1
-#define OSNET_DEBUG                     1
-#define OSNET_UDP                       0
+#define OSNET_DEBUG                     0
+#define OSNET_UDP                       1
 
 #define OSNET_PRINT(out, ...) \
     if (out) { \
@@ -44,10 +44,14 @@ extern FILE *osnet_outfi;
 #include <stdbool.h>
 #include <unistd.h>
 
-#define OSNET_HOST_IP   "10.128.0.44"
-#define OSNET_HOST_PORT "12345"
+#define OSNET_HOST_IP   "10.128.0.51"
+#define OSNET_HOST_PORT "23456"
 
-bool osnet_send_udp(const char *msg);
+extern int fd_udp;
+extern struct addrinfo hints_udp;
+extern struct addrinfo *serv_udp;
+extern struct addrinfo *pos_udp;
+bool osnet_send_udp(const char *msg,int fd, struct addrinfo *pos);
 
 #endif
 
