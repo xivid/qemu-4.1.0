@@ -144,3 +144,93 @@ $ socket="/tmp/qmp0.sock"
 $ dest="10.128.0.40:12345"
 echo '{"execute": "qmp_capabilities"}{"execute": "migrate", "arguments": {"uri": "tcp:'"$dest\"}}" | nc -U $socket
 ```
+
+
+
+
+# Seamless VM Templating
+- Step 1: Keep the BaseVM running using `-osnet_seamless_template` to capture multiple execution states
+```
+$ i=0
+$ vcpu=1
+$ ram="1G"
+$ img="vm.qcow2"
+$ mdir="/mnt/memory_template"
+$ max_vcpu=$(( vcpu - 1 ))
+$ tport=$(( i + 7000 ))
+$ mport=$(( i + 8000 ))
+$ sdir="/tmp"
+
+$ qemu-system-x86_64 \
+        -machine pc,accel=kvm,kernel_irqchip=on,nvdimm=on \
+        -cpu host,host-cache-info=on \
+        -smp ${vcpu},cores=${vcpu},threads=1,sockets=1 \
+        -m   ${ram},slots=4,maxmem=30G\
+        -object memory-backend-file,id=mem0,size=${ram},mem-path=${mdir}/memory,share=on \
+        -numa node,nodeid=0,cpus=0-${max_vcpu},memdev=mem0 \
+        -drive file=${img},if=virtio \
+        -qmp unix:${sdir}/qmp${i}.sock,server,nowait \
+        -serial telnet:127.0.0.1:${tport},server,nowait \
+        -monitor telnet:127.0.0.1:${mport},server,nowait \
+        -parallel none \
+        -serial none \
+        -net none \
+        -vga none \
+        -nographic \
+        -nodefaults \
+        -osnet_seamless_template
+
+```
+
+# Seamless Template 1 
+- Step 2: Save the memory and device state
+```
+$ socket="/tmp/qmp0.sock"
+$ ddir="/mnt/ramdisk"
+$ echo '{"execute":"qmp_capabilities"}{"execute":"migrate-set-capabilities", "arguments":{"capabilities": [{"capability":"bypass-shared-memory", "state":true}]}}' | nc -U $socket
+$ echo '{"execute":"qmp_capabilities"}{"execute":"migrate", "arguments":{"uri":"exec:cat' '>' "${ddir}/state\"}}" | nc -U $socket
+$ qemu-img create -f qcow2 -b /shared/vm-images/vm.qcow2 /shared/vm-images/snap.qcow2
+```
+
+
+- Step 3: Save the memory template
+```
+(qemu)stop
+$ cp /mnt/memory_template/memory /mnt/new_memory_template/
+(qemu)cont
+```
+
+
+
+- Step 4: Starting new VM from seamless template
+```
+$ i=0
+$ vcpu=1
+$ ram="1G"
+$ img="snap.qcow2"
+$ mdir="/mnt/new_memory_template"
+$ ddir="/mnt/ramdisk"
+$ max_vcpu=$(( vcpu - 1 ))
+$ tport=$(( i + 7000 ))
+$ mport=$(( i + 8000 ))
+$ sdir="/tmp"
+
+$ qemu-system-x86_64 \
+        -machine pc,accel=kvm,kernel_irqchip=on,nvdimm=on \
+        -cpu host,host-cache-info=on \
+        -smp ${vcpu},cores=${vcpu},threads=1,sockets=1 \
+        -m   ${ram},slots=4,maxmem=30G\
+        -object memory-backend-file,id=mem0,size=${ram},mem-path=${mdir}/memory,share=off \
+        -numa node,nodeid=0,cpus=0-${max_vcpu},memdev=mem0 \
+        -drive file=${img},if=virtio \
+        -qmp unix:${sdir}/qmp${i}.sock,server,nowait \
+        -serial telnet:127.0.0.1:${tport},server,nowait \
+        -monitor telnet:127.0.0.1:${mport},server,nowait \
+        -incoming "exec:cat ${ddir}/state" \
+        -parallel none \
+        -serial none \
+        -vga none \
+        -nographic \
+        -osnet_init_ram_state \
+        -nodefaults
+```

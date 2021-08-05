@@ -132,6 +132,7 @@ int main(int argc, char **argv)
 
 #include "osnet/mvm.h"
 #include "osnet/vm_template.h"
+bool osnet_seamless_flag = false;
 #if OSNET_MIGRATE_VM_TEMPLATING
 struct OSNETRAMBlocks osnet_rbs;
 bool osnet_init_ram_state = false;
@@ -3267,6 +3268,9 @@ int main(int argc, char **argv, char **envp)
                 break;
             case QEMU_OPTION_S:
                 autostart = 0;
+                break;
+            case QEMU_OPTION_osnet_seamless_template:
+                osnet_seamless_flag = true;
                 break;
 #if OSNET_MIGRATE_VM_TEMPLATING
             case QEMU_OPTION_osnet_init_ram_state:

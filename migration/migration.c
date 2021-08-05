@@ -2844,7 +2844,21 @@ static void migration_completion(MigrationState *s)
 
     if (!migrate_colo_enabled()) {
         migrate_set_state(&s->state, current_active_state,
-                          MIGRATION_STATUS_COMPLETED);
+                        MIGRATION_STATUS_COMPLETED);
+        if(osnet_seamless_flag){
+                 Error *local_err = NULL;
+
+                qemu_mutex_lock_iothread();
+                bdrv_invalidate_cache_all(&local_err);
+                if (local_err) {
+                        error_report_err(local_err);
+                } else {
+                        s->block_inactive = false;
+                }
+                vm_start();
+                qemu_mutex_unlock_iothread();
+
+        }
     }
 
     return;
@@ -3043,9 +3057,6 @@ static uint64_t migration_total_bytes(MigrationState *s)
 
 static void migration_calculate_complete(MigrationState *s)
 {
-#if OSNET_UDP
-    osnet_send_udp("end");
-#endif
     uint64_t bytes = migration_total_bytes(s);
     int64_t end_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     int64_t transfer_time;
@@ -3164,7 +3175,8 @@ static void migration_iteration_finish(MigrationState *s)
     switch (s->state) {
     case MIGRATION_STATUS_COMPLETED:
         migration_calculate_complete(s);
-        runstate_set(RUN_STATE_POSTMIGRATE);
+        if(!osnet_seamless_flag)
+                runstate_set(RUN_STATE_POSTMIGRATE);
         break;
 
     case MIGRATION_STATUS_ACTIVE:

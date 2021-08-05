@@ -3563,6 +3563,16 @@ STEXI
 Initialize the RAM state after creating a VM with the VM templating
 ETEXI
 
+DEF("osnet_seamless_template", 0, QEMU_OPTION_osnet_seamless_template, \
+    "-osnet_seamless_template     Create multiple templates from same VM\n",
+    QEMU_ARCH_ALL)
+STEXI
+@item -osnet_seamless_template
+@findex -osnet_seamless_template
+Create multiple templates from same VM
+ETEXI
+
+
 DEF("osnet_debug", 0, QEMU_OPTION_osnet_debug, \
     "-osnet_debug     save the debug output to /tmp/debug.txt\n",
     QEMU_ARCH_ALL)
