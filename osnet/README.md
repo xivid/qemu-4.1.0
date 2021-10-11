@@ -189,7 +189,7 @@ $ socket="/tmp/qmp0.sock"
 $ ddir="/mnt/ramdisk"
 $ echo '{"execute":"qmp_capabilities"}{"execute":"migrate-set-capabilities", "arguments":{"capabilities": [{"capability":"bypass-shared-memory", "state":true}]}}' | nc -U $socket
 $ echo '{"execute":"qmp_capabilities"}{"execute":"migrate", "arguments":{"uri":"exec:cat' '>' "${ddir}/state\"}}" | nc -U $socket
-$ qemu-img create -f qcow2 -b /shared/vm-images/vm.qcow2 /shared/vm-images/snap.qcow2
+$qemu-img create -f qcow2 -b /shared/vm-images/vm.qcow2 /shared/vm-images/snap.qcow2
 ```
 
 
@@ -233,4 +233,67 @@ $ qemu-system-x86_64 \
         -nographic \
         -osnet_init_ram_state \
         -nodefaults
+```
+
+```
+# Chained VM Templating
+- Step1: Start the Templated VM with "share = on" and disable osnet_init_ram_state(Use this only for migration)
+
+$id=$1
+$mem=$2
+$i=0
+$vcpu=2
+$ram=${mem}G
+$img="/shared/vm-images/snap$id.qcow2"
+$mdir="/mnt/template_ram$id"
+$cpumap="map.txt"
+$ddir="/mnt/ramdisk$id"
+$max_vcpu=$(( vcpu - 1 ))
+$tport=$(( i + 7000 ))
+$mport=$(( i + 8000 ))
+$sdir="/tmp"
+
+$qemu-system-x86_64 \
+                -machine pc,accel=kvm,kernel_irqchip=on,nvdimm=on \
+                -cpu host,host-cache-info=on \
+                -smp ${vcpu},cores=${vcpu},threads=1,sockets=1 \
+                -m   ${ram},slots=4,maxmem=30G\
+                -object memory-backend-file,id=mem1,size=${ram},mem-path=$mdir/memory,share=on\
+                -numa node,nodeid=0,cpus=0-1,memdev=mem1\
+                -boot c \
+                -hda $img \
+                -qmp unix:${sdir}/qmp${i}.sock,server,nowait \
+                -serial telnet:127.0.0.1:${tport},server,nowait \
+                -monitor telnet:127.0.0.1:${mport},server,nowait \
+                -parallel none \
+                -serial none \
+                -vga none\
+                -nographic\
+                -nodefaults\
+                -incoming "exec:cat ${ddir}/state"
+```
+
+```
+- Step2: Save the Memory Template and VM state, execute the below as script
+
+if [ $# -le 0 ]
+then
+echo "Usage: [destination ID(RAMState/MemTemplate)]"
+exit 1
+fi
+
+des=$1
+sec_arg=1
+src=`expr $des - $sec_arg`
+socket=/tmp/qmp0.sock
+ddir="/mnt/ramdisk$des"
+
+date +%s%3N
+echo '{"execute":"qmp_capabilities"}{"execute":"migrate-set-capabilities", "arguments":{"capabilities": [{"capability":"bypass-shared-memory", "state":true}]}}' | nc -U $socket
+echo '{"execute":"qmp_capabilities"}{"execute":"migrate", "arguments":{"uri":"exec:cat' '>' "${ddir}/state\"}}" | nc -U $socket
+cp /mnt/template_ram$src/memory /mnt/template_ram$des/
+date +%s%3N
+
+qemu-img create -f qcow2 -b /shared/vm-images/vm.qcow2 /shared/vm-images/snap$des.qcow2
+echo '{"execute":"qmp_capabilities"}{"execute":"cont"}' | nc -U $socket
 ```
