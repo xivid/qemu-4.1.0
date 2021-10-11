@@ -237,7 +237,7 @@ $ qemu-system-x86_64 \
 
 
 # Chained VM Templating
-- Step1: Start the Templated VM with "share = on" and disable osnet_init_ram_state(Use this only for migration)
+- Step1: Start the Templated VM with "share = on" and disable osnet_init_ram_state(Use this flag only for migration)
 
 ```
 $id=$1
