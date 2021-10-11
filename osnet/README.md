@@ -274,7 +274,7 @@ $qemu-system-x86_64 \
                 -incoming "exec:cat ${ddir}/state"
 ```
 
-- Step2: Save the Memory Template and VM state, execute the below as script
+- Step2: Save the Memory Template and VM state, execute the below as script. This script can be used for both Seamless(without -osnet_seamless_template) and Chained Templating for Backuptime measurement and Snapshots(Mem Template and VM state)
 
 ```
 #!/bin/bash
