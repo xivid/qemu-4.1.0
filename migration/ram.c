@@ -1758,7 +1758,7 @@ static inline bool migration_bitmap_clear_dirty(RAMState *rs,
 
     ret = test_and_clear_bit(page, rb->bmap);
 
-    if (ret) {
+    if (ret && rs->migration_dirty_pages > 0) {
         rs->migration_dirty_pages--;
     }
     qemu_mutex_unlock(&rs->bitmap_mutex);
