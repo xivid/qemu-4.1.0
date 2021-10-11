@@ -277,6 +277,8 @@ $qemu-system-x86_64 \
 - Step2: Save the Memory Template and VM state, execute the below as script
 
 ```
+#!/bin/bash
+
 if [ $# -le 0 ]
 then
 echo "Usage: [destination ID(RAMState/MemTemplate)]"
