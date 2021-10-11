@@ -275,6 +275,7 @@ $qemu-system-x86_64 \
 ```
 
 - Step2: Save the Memory Template and VM state, execute the below as script. This script can be used for both Seamless(without -osnet_seamless_template) and Chained Templating for Backuptime measurement and Snapshots(Mem Template and VM state)
+- Use df -h to measure the actual memory usage of the memory template
 
 ```
 #!/bin/bash
