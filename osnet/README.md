@@ -235,10 +235,11 @@ $ qemu-system-x86_64 \
         -nodefaults
 ```
 
-```
+
 # Chained VM Templating
 - Step1: Start the Templated VM with "share = on" and disable osnet_init_ram_state(Use this only for migration)
 
+```
 $id=$1
 $mem=$2
 $i=0
@@ -273,9 +274,9 @@ $qemu-system-x86_64 \
                 -incoming "exec:cat ${ddir}/state"
 ```
 
-```
 - Step2: Save the Memory Template and VM state, execute the below as script
 
+```
 if [ $# -le 0 ]
 then
 echo "Usage: [destination ID(RAMState/MemTemplate)]"
