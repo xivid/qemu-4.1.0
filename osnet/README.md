@@ -149,13 +149,28 @@ echo '{"execute": "qmp_capabilities"}{"execute": "migrate", "arguments": {"uri":
 
 
 # Seamless VM Templating
-- Step 1: Keep the BaseVM running using `-osnet_seamless_template` to capture multiple execution states
+
+
+- Step 1: To turn the optimized lseek copy on, include -osnet_seamless_template <index of src_tmpfs> In the below example, the index=1. 
+
+The file memory_template1/memory is automically copied to memory_template2/memory, so please mount before running this script (if src index = 2, then mount template_ram3)
+$mount -t tmpfs -o size=6G tmpfs /mnt/template_ram2 ( src index=1)
+
+
+If you need to create 3 templates using seamless templating technique, mount 4 tmpfs in advance before executing the script. 
+
+$mount -t tmpfs -o size=6G tmpfs /mnt/template_ram1
+$mount -t tmpfs -o size=6G tmpfs /mnt/template_ram2 ( src index=1)
+$mount -t tmpfs -o size=6G tmpfs /mnt/template_ram3 ( src index=1)
+$mount -t tmpfs -o size=6G tmpfs /mnt/template_ram4 ( src index=1)
+
+
 ```
-$ i=0
+$ i=1
 $ vcpu=1
 $ ram="1G"
 $ img="vm.qcow2"
-$ mdir="/mnt/memory_template"
+$ mdir="/mnt/memory_template$i"
 $ max_vcpu=$(( vcpu - 1 ))
 $ tport=$(( i + 7000 ))
 $ mport=$(( i + 8000 ))
@@ -178,31 +193,32 @@ $ qemu-system-x86_64 \
         -vga none \
         -nographic \
         -nodefaults \
-        -osnet_seamless_template
+        -osnet_seamless_template $i
 
 ```
 
 # Seamless Template 1 
-- Step 2: Save the memory and device state
+- Step 2: Save only the device state, the memory state would be automically copied with the help of -osnet_seamless_template flag using lseek operation
+
 ```
+$ des=$1
 $ socket="/tmp/qmp0.sock"
-$ ddir="/mnt/ramdisk"
+$ ddir="/mnt/ramdisk$des"
+
+
+date +%s%3N
 $ echo '{"execute":"qmp_capabilities"}{"execute":"migrate-set-capabilities", "arguments":{"capabilities": [{"capability":"bypass-shared-memory", "state":true}]}}' | nc -U $socket
 $ echo '{"execute":"qmp_capabilities"}{"execute":"migrate", "arguments":{"uri":"exec:cat' '>' "${ddir}/state\"}}" | nc -U $socket
-$qemu-img create -f qcow2 -b /shared/vm-images/vm.qcow2 /shared/vm-images/snap.qcow2
-```
+date +%s%3N
 
+$qemu-img create -f qcow2 -b /shared/vm-images/vm.qcow2 /shared/vm-images/snap$des.qcow2
 
-- Step 3: Save the memory template
-```
-(qemu)stop
-$ cp /mnt/memory_template/memory /mnt/new_memory_template/
-(qemu)cont
+The VM is automatically resumed at this point in time
 ```
 
 
 
-- Step 4: Starting new VM from seamless template
+- Step 3: Starting new VM from seamless template
 ```
 $ i=0
 $ vcpu=1
@@ -238,6 +254,8 @@ $ qemu-system-x86_64 \
 
 # Chained VM Templating
 - Step1: Start the Templated VM with "share = on" and disable osnet_init_ram_state(Use this flag only for migration)
+- Include the osnet_seamless_template flag for lseek copy
+
 
 ```
 $id=$1
@@ -271,10 +289,12 @@ $qemu-system-x86_64 \
                 -vga none\
                 -nographic\
                 -nodefaults\
-                -incoming "exec:cat ${ddir}/state"
+                -incoming "exec:cat ${ddir}/state" \
+                -osnet_seamless_template $id
+
 ```
 
-- Step2: Save the Memory Template and VM state, execute the below as script. This script can be used for both Seamless(without -osnet_seamless_template) and Chained Templating for Backuptime measurement and Snapshots(Mem Template and VM state)
+- Step2: Save the VM state, execute the below as script. This script is same as the previous one. 
 - Use df -h to measure the actual memory usage of the memory template
 
 ```
@@ -287,17 +307,15 @@ exit 1
 fi
 
 des=$1
-sec_arg=1
-src=`expr $des - $sec_arg`
 socket=/tmp/qmp0.sock
 ddir="/mnt/ramdisk$des"
 
 date +%s%3N
 echo '{"execute":"qmp_capabilities"}{"execute":"migrate-set-capabilities", "arguments":{"capabilities": [{"capability":"bypass-shared-memory", "state":true}]}}' | nc -U $socket
 echo '{"execute":"qmp_capabilities"}{"execute":"migrate", "arguments":{"uri":"exec:cat' '>' "${ddir}/state\"}}" | nc -U $socket
-cp /mnt/template_ram$src/memory /mnt/template_ram$des/
 date +%s%3N
 
 qemu-img create -f qcow2 -b /shared/vm-images/vm.qcow2 /shared/vm-images/snap$des.qcow2
-echo '{"execute":"qmp_capabilities"}{"execute":"cont"}' | nc -U $socket
+
+The VM is automatically resumed at this point in time. 
 ```
