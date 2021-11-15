@@ -3,11 +3,12 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define OSNET_CREATE_VM_TEMPLATE        0
+#define OSNET_CREATE_VM_TEMPLATE        1
 #define OSNET_MIGRATE_VM_TEMPLATING     0
 #define OSNET_DEBUG                     0
 #define OSNET_UDP                       0
 extern bool osnet_seamless_flag;
+extern int osnet_tmpfs_start;
 #define OSNET_PRINT(out, ...) \
     if (out) { \
         fprintf(out, __VA_ARGS__); \

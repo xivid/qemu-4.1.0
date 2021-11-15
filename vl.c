@@ -133,6 +133,20 @@ int main(int argc, char **argv)
 #include "osnet/mvm.h"
 #include "osnet/vm_template.h"
 bool osnet_seamless_flag = false;
+int osnet_tmpfs_start = 0;
+
+
+static void osnet_seamless_chained(const char *optarg){
+      
+        osnet_tmpfs_start = atoi(optarg);
+
+
+        
+}
+
+
+
+
 #if OSNET_MIGRATE_VM_TEMPLATING
 struct OSNETRAMBlocks osnet_rbs;
 bool osnet_init_ram_state = false;
@@ -149,6 +163,10 @@ void osnet_init_orbs(struct OSNETRAMBlocks *orbs)
 #if OSNET_DEBUG
 FILE *osnet_outfi = NULL;
 #endif
+
+
+
+
 
 #if OSNET_UDP
 int fd_udp;
@@ -3271,6 +3289,7 @@ int main(int argc, char **argv, char **envp)
                 break;
             case QEMU_OPTION_osnet_seamless_template:
                 osnet_seamless_flag = true;
+                osnet_seamless_chained(optarg);
                 break;
 #if OSNET_MIGRATE_VM_TEMPLATING
             case QEMU_OPTION_osnet_init_ram_state:
@@ -4595,6 +4614,8 @@ int main(int argc, char **argv, char **envp)
     return 0;
 }
 
+
+
 #if OSNET_MVM
 void osnet_initialize_cpumap(const char *optarg, struct osnet_cpumap *cpumap)
 {
@@ -4613,6 +4634,8 @@ void osnet_default_initialize(struct osnet_cpumap *cpumap)
         cpumap->is_valid = false;
         cpumap->nvcpus = 0;
 }
+
+
 
 void osnet_get_path(const char *optarg, struct osnet_cpumap *cpumap)
 {

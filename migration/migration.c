@@ -48,7 +48,7 @@
 #include "hw/boards.h"
 #include "monitor/monitor.h"
 #include "net/announce.h"
-
+#include "osnet/stop_copy.h"
 #include "osnet/vm_template.h"
 
 #define MAX_THROTTLE  (32 << 20)      /* Migration transfer speed throttling */
@@ -125,11 +125,18 @@ enum mig_rp_message_type {
 static MigrationState *current_migration;
 static MigrationIncomingState *current_incoming;
 
+
+static char src_file[50];
+static char dst_file[50];
+
+struct timeval cpy_start, cpy_end;
+
 static bool migration_object_check(MigrationState *ms, Error **errp);
 static int migration_maybe_pause(MigrationState *s,
                                  int *current_active_state,
                                  int new_state);
 static void migrate_fd_cancel(MigrationState *s);
+
 
 void migration_object_init(void)
 {
@@ -139,7 +146,6 @@ void migration_object_init(void)
     /* This can only be called once. */
     assert(!current_migration);
     current_migration = MIGRATION_OBJ(object_new(TYPE_MIGRATION));
-
     /*
      * Init the migrate incoming object as well no matter whether
      * we'll use it or not.
@@ -157,6 +163,13 @@ void migration_object_init(void)
     init_dirty_bitmap_incoming_migration();
 
     if (!migration_object_check(current_migration, &err)) {
+ 
+ 
+    
+      strcpy(src_file,"/mnt/template_ramX/memory");
+      src_file[17] =  osnet_tmpfs_start + '0';
+      strcpy(dst_file,"/mnt/template_ramX/memory");
+    
         error_report_err(err);
         exit(1);
     }
@@ -415,6 +428,7 @@ static void process_incoming_migration_bh(void *opaque)
         global_state_get_runstate() == RUN_STATE_RUNNING) {
 #if OSNET_MIGRATE_VM_TEMPLATING
         if (osnet_init_ram_state) {
+printf("Source\n");
             void *opaque = osnet_get_ram_state();
             osnet_ram_init_all(opaque);
         }
@@ -435,10 +449,10 @@ static void process_incoming_migration_bh(void *opaque)
      * observer sees this event they might start to prod at the VM assuming
      * it's ready to use.
      */
-#if OSNET_UDP
+/*#if OSNET_UDP
     osnet_send_udp("end",fd_udp,pos_udp);
     close(fd_udp);
-#endif
+#endif*/
 
     migrate_set_state(&mis->state, MIGRATION_STATUS_ACTIVE,
                       MIGRATION_STATUS_COMPLETED);
@@ -1734,6 +1748,7 @@ void migrate_init(MigrationState *s)
     s->total_time = 0;
     s->vm_was_running = false;
     s->iteration_initial_bytes = 0;
+    //s->threshold_size = 1024*1024*10;
     s->threshold_size = 0;
 }
 
@@ -2846,6 +2861,19 @@ static void migration_completion(MigrationState *s)
         migrate_set_state(&s->state, current_active_state,
                         MIGRATION_STATUS_COMPLETED);
         if(osnet_seamless_flag){
+                
+                 osnet_tmpfs_start ++;
+               
+
+                dst_file[17] =  osnet_tmpfs_start + '0';
+             
+
+                gettimeofday(&cpy_start, NULL);
+
+                mem_cpy_tmpfs(src_file, dst_file);
+                gettimeofday(&cpy_end, NULL);
+                printf("Total time : %ld micro seconds\n",((cpy_end.tv_sec - cpy_start.tv_sec)*1000000) + cpy_end.tv_usec-cpy_start.tv_usec);
+                
                  Error *local_err = NULL;
 
                 qemu_mutex_lock_iothread();
@@ -2857,6 +2885,7 @@ static void migration_completion(MigrationState *s)
                 }
                 vm_start();
                 qemu_mutex_unlock_iothread();
+
 
         }
     }
@@ -2891,7 +2920,6 @@ bool migrate_colo_enabled(void)
     MigrationState *s = migrate_get_current();
     return s->enabled_capabilities[MIGRATION_CAPABILITY_X_COLO];
 }
-
 typedef enum MigThrError {
     /* No error detected */
     MIG_THR_ERR_NONE = 0,
@@ -3159,6 +3187,7 @@ static MigIterateState migration_iteration_run(MigrationState *s)
             s->state == MIGRATION_STATUS_POSTCOPY_ACTIVE);
     } else {
         trace_migration_thread_low_pending(pending_size);
+      //  printf("Pending:%ld\n",pending_size/4096);
         migration_completion(s);
         return MIG_ITERATE_BREAK;
     }
