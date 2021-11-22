@@ -150,6 +150,9 @@ echo '{"execute": "qmp_capabilities"}{"execute": "migrate", "arguments": {"uri":
 
 # Seamless VM Templating
 
+To enable the multithreading_feature, set the thread_count before executing the script. 
+$ export thread_count="thread_count" Verify the variable is set using $ export | grep thread_count
+
 
 - Step 1: To turn the optimized lseek copy on, include -osnet_seamless_template <index of src_tmpfs> In the below example, the index=1. 
 
@@ -253,6 +256,11 @@ $ qemu-system-x86_64 \
 
 
 # Chained VM Templating
+To enable the multithreading_feature, set the thread_count before executing the script. 
+$ export thread_count="thread_count" Verify the variable is set using $ export | grep thread_count
+
+
+
 - Step1: Start the Templated VM with "share = on" and disable osnet_init_ram_state(Use this flag only for migration)
 - Include the osnet_seamless_template flag for lseek copy
 
